@@ -56,10 +56,13 @@ async def run_async_migrations() -> None:
     configuration["sqlalchemy.url"] = url
 
     connect_args: dict[str, object] = {}
-    if "pooler.supabase.com" in url or ":6543" in url:
+    _is_pooler = "pooler.supabase.com" in url or ":6543" in url
+    _cloud_hosts = ["supabase.co", "supabase.com", "onrender.com", "neon.tech", "rds.amazonaws.com"]
+
+    if _is_pooler:
         connect_args["statement_cache_size"] = 0
         connect_args["prepared_statement_cache_size"] = 0
-    if any(h in url for h in ["supabase.co", "pooler.supabase.com", "onrender.com", "neon.tech"]) or "ssl=" in url:
+    if any(h in url for h in _cloud_hosts) or "ssl=" in url:
         connect_args["ssl"] = "require"
 
     connectable = async_engine_from_config(

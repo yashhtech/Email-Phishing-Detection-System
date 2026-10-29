@@ -22,18 +22,28 @@ def build_engine_kwargs(settings: Settings) -> dict[str, Any]:
     url = settings.database_url
     connect_args: dict[str, Any] = {}
 
+    _is_supabase = "supabase.co" in url or "supabase.com" in url
+    _is_pooler = "pooler.supabase.com" in url or ":6543" in url
+
     # Supabase Transaction Pooler (port 6543) does not support prepared statements
-    if "pooler.supabase.com" in url or ":6543" in url:
+    if _is_pooler:
         connect_args["statement_cache_size"] = 0
         connect_args["prepared_statement_cache_size"] = 0
 
-    # Cloud databases (Supabase, Render, Neon, AWS RDS) require SSL
-    if any(host in url for host in ["supabase.co", "pooler.supabase.com", "onrender.com", "neon.tech"]) or "ssl=" in url:
+    # Cloud databases require SSL — Supabase (all variants), Render, Neon, AWS RDS
+    _cloud_hosts = [
+        "supabase.co",
+        "supabase.com",
+        "onrender.com",
+        "neon.tech",
+        "rds.amazonaws.com",
+    ]
+    if any(host in url for host in _cloud_hosts) or "ssl=" in url:
         connect_args["ssl"] = "require"
 
     return {
-        "pool_size": min(settings.database_pool_size, 10),
-        "max_overflow": min(settings.database_max_overflow, 10),
+        "pool_size": min(settings.database_pool_size, 5) if _is_supabase else min(settings.database_pool_size, 10),
+        "max_overflow": min(settings.database_max_overflow, 5) if _is_supabase else min(settings.database_max_overflow, 10),
         "pool_pre_ping": True,  # Discard stale connections dropped by cloud NAT
         "pool_recycle": 300,    # Recycle connections every 5 minutes
         "echo": settings.database_echo,
