@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     debug: bool = Field(default=False)
     demo_mode: bool = Field(default=False, description="Enable demo and dev endpoints")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(default="INFO")
-    allowed_origins: list[str] = Field(
+    allowed_origins: list[str] | str = Field(
         default=["http://localhost:5173", "http://localhost:3000"],
     )
     cors_origin_regex: str | None = Field(
@@ -105,7 +105,9 @@ class Settings(BaseSettings):
     @field_validator("allowed_origins", mode="before")
     @classmethod
     def parse_allowed_origins(cls, v: Any) -> list[str]:
-        """Support comma-separated strings or JSON arrays from cloud environment variables."""
+        """Support comma-separated strings or JSON arrays from cloud environment variables.
+        Also normalizes full URLs (e.g. https://domain.com/analyze -> https://domain.com).
+        """
         if isinstance(v, str):
             v_stripped = v.strip()
             if v_stripped.startswith("[") and v_stripped.endswith("]"):
@@ -114,11 +116,31 @@ class Settings(BaseSettings):
                 try:
                     parsed = json.loads(v_stripped)
                     if isinstance(parsed, list):
-                        return [str(orig).strip() for orig in parsed if str(orig).strip()]
+                        v = parsed
                 except Exception:
-                    pass
-            return [orig.strip() for orig in v_stripped.split(",") if orig.strip()]
-        return v
+                    v = [orig.strip() for orig in v_stripped.strip("[]").split(",") if orig.strip()]
+            else:
+                v = [orig.strip() for orig in v_stripped.split(",") if orig.strip()]
+
+        if isinstance(v, (list, tuple, set)):
+            from urllib.parse import urlparse
+
+            cleaned: list[str] = []
+            for item in v:
+                item_str = str(item).strip().strip("'\"")
+                if not item_str:
+                    continue
+                try:
+                    parsed_url = urlparse(item_str)
+                    if parsed_url.scheme and parsed_url.netloc:
+                        # An origin is strictly scheme + host (+ optional port), never a subpath
+                        cleaned.append(f"{parsed_url.scheme}://{parsed_url.netloc}")
+                    else:
+                        cleaned.append(item_str)
+                except Exception:
+                    cleaned.append(item_str)
+            return cleaned
+        return [str(v)]
 
     @field_validator("database_url", mode="before")
     @classmethod
