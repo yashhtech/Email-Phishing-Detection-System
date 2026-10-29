@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: email-threat-detection-api
+    runtime: python
+    plan: free
+    region: oregon
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt && alembic upgrade head
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health/live
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: REDIS_REQUIRED
+        value: "false"
+      - key: CORS_ORIGIN_REGEX
+        value: "^https://.*\\.vercel\\.app$"
+      - key: DEMO_MODE
+        value: "true"
+      - key: DEFAULT_TENANT_ID
+        value: "a0000000-0000-0000-0000-000000000001"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false

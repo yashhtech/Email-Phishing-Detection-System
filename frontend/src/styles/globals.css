@@ -1,0 +1,117 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light theme palette - Enterprise Cybersecurity SaaS */
+    --background: 210 20% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --primary: 255 75% 58%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 245 40% 96%;
+    --secondary-foreground: 255 70% 45%;
+    --muted: 215 25% 94%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 255 60% 97%;
+    --accent-foreground: 255 75% 45%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 20% 90%;
+    --input: 214 20% 90%;
+    --ring: 255 75% 58%;
+    --radius: 0.75rem;
+    /* Semantic colours */
+    --success: 152 68% 38%;
+    --warning: 38 92% 50%;
+    --info: 199 89% 48%;
+    --coral: 16 90% 58%;
+    --ai: 265 85% 62%;
+    --tech: 178 78% 36%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-[#f8fafc] text-foreground antialiased selection:bg-violet-100 selection:text-violet-900;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'rlig' 1, 'calt' 1;
+  }
+}
+
+/* Smooth transitions for interactive elements */
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-violet-600 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-violet-200 transition-all duration-150 hover:bg-violet-700 hover:shadow-lg hover:shadow-violet-200 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-5 py-2.5 text-sm font-medium text-violet-700 transition-all duration-150 hover:bg-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:ring-offset-2 active:scale-95;
+  }
+
+  .card {
+    @apply rounded-xl border border-gray-100 bg-white shadow-sm;
+  }
+
+  .form-input {
+    @apply w-full rounded-lg border border-gray-200 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm transition-colors focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100 disabled:bg-gray-50 disabled:text-gray-400;
+  }
+
+  .form-textarea {
+    @apply form-input resize-y min-h-[7rem] leading-relaxed;
+  }
+
+  .form-label {
+    @apply mb-1.5 block text-sm font-medium text-gray-700;
+  }
+
+  .field-error {
+    @apply mt-1 flex items-center gap-1.5 text-xs text-red-600;
+  }
+
+  .status-badge {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold;
+  }
+
+  .tab-active {
+    @apply border-b-2 border-violet-600 pb-3 text-sm font-semibold text-violet-700;
+  }
+
+  .tab-inactive {
+    @apply border-b-2 border-transparent pb-3 text-sm font-medium text-gray-500 transition-colors hover:border-gray-300 hover:text-gray-700;
+  }
+
+  /* Auth verdict colours */
+  .verdict-pass {
+    @apply bg-green-50 text-green-700 ring-1 ring-green-200;
+  }
+  .verdict-fail {
+    @apply bg-red-50 text-red-700 ring-1 ring-red-200;
+  }
+  .verdict-none {
+    @apply bg-gray-50 text-gray-500 ring-1 ring-gray-200;
+  }
+
+  /* Drag-and-drop zone */
+  .dropzone {
+    @apply flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-violet-200 bg-violet-50/40 p-8 text-center transition-all duration-200;
+  }
+  .dropzone-active {
+    @apply border-violet-500 bg-violet-50;
+  }
+
+  /* Scrollbar */
+  .scrollbar-thin::-webkit-scrollbar {
+    @apply h-1.5 w-1.5;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-gray-300;
+  }
+}
