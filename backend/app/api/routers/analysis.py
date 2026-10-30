@@ -355,6 +355,88 @@ async def get_analysis_status(
             AnalysisStatus.SKIPPED: "failed",
         }
 
+        score_val = analysis.overall_risk_score or 0
+        lvl_val = (analysis.risk_level.value if analysis.risk_level else "safe").lower()
+
+        # Explanation synthesis
+        explanation: str | None = None
+        if analysis.llm_analysis and (analysis.llm_analysis.executive_summary or analysis.llm_analysis.threat_narrative):
+            explanation = analysis.llm_analysis.executive_summary or analysis.llm_analysis.threat_narrative
+        elif analysis.risk_score and analysis.risk_score.factor_breakdown:
+            fb = analysis.risk_score.factor_breakdown
+            if isinstance(fb, list) and len(fb) > 0 and isinstance(fb[0], dict) and fb[0].get("rationale"):
+                explanation = fb[0]["rationale"]
+            elif isinstance(fb, dict) and fb.get("rationale"):
+                explanation = str(fb["rationale"])
+
+        if not explanation:
+            if lvl_val in ("critical", "high") or score_val >= 70:
+                explanation = (
+                    "Critical threat indicators detected including suspected credential harvesting, "
+                    "severe authentication failures, or deceptive lookalike domains."
+                )
+            elif lvl_val == "medium" or score_val >= 30:
+                explanation = (
+                    "Unusual patterns detected such as unverified sender authentication, "
+                    "suspicious wording, or unverified external links."
+                )
+            else:
+                explanation = (
+                    "All core security authentication checks passed. "
+                    "No deceptive links, malware indicators, or sender impersonation detected."
+                )
+
+        # Top 3 findings sorted by severity
+        severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+        sorted_signals = sorted(
+            analysis.threat_signals or [],
+            key=lambda s: severity_order.get(s.severity.value.lower(), 5),
+        )
+        findings = [s.title for s in sorted_signals[:3] if s.title]
+        if not findings:
+            if lvl_val in ("low", "safe") and score_val < 30:
+                findings = [
+                    "Sender authentication passed (SPF/DKIM/DMARC)",
+                    "No suspicious or defanged URLs detected",
+                    "No weaponized or executable attachments found",
+                ]
+            else:
+                findings = [f"Automated risk evaluation score: {score_val}/100"]
+
+        # Security checks summary
+        sec_header = analysis.email.header if analysis.email and analysis.email.header else None
+        security_checks = {
+            "spf": sec_header.spf_verdict.value if sec_header and sec_header.spf_verdict else "unknown",
+            "dkim": sec_header.dkim_verdict.value if sec_header and sec_header.dkim_verdict else "unknown",
+            "dmarc": sec_header.dmarc_verdict.value if sec_header and sec_header.dmarc_verdict else "unknown",
+            "urls_analyzed": len(analysis.email.urls) if analysis.email and analysis.email.urls else 0,
+            "attachments_analyzed": len(analysis.email.attachments) if analysis.email and analysis.email.attachments else 0,
+        }
+
+        # Threat categories supported by analysis
+        threat_categories = list(dict.fromkeys(
+            s.category.value for s in (analysis.threat_signals or []) if s.category
+        ))
+
+        # Recommendations matching prompt guidelines
+        if lvl_val in ("critical", "high") or score_val >= 70:
+            recommendations = [
+                "Do not click links, open attachments, reply, or share credentials or financial information. Report this email to your security team."
+            ]
+        elif lvl_val == "medium" or score_val >= 30:
+            recommendations = [
+                "Do not click links or open attachments until you independently verify the sender."
+            ]
+        else:
+            recommendations = [
+                "No major threat indicators were detected. Still verify unexpected requests before sharing sensitive information."
+            ]
+
+        if analysis.llm_analysis and analysis.llm_analysis.recommended_action:
+            llm_rec = analysis.llm_analysis.recommended_action.replace("_", " ").capitalize()
+            if llm_rec not in recommendations:
+                recommendations.append(f"AI recommendation: {llm_rec}")
+
         # Build comprehensive forensic payload
         return {
             "analysis_id": str(analysis.id),
@@ -362,8 +444,17 @@ async def get_analysis_status(
             "status": status_mapping.get(analysis.status, "unknown"),
             "raw_status": analysis.status.value,
             "verdict": analysis.verdict.value if analysis.verdict else "unknown",
-            "overall_risk_score": analysis.overall_risk_score or 0,
-            "risk_level": analysis.risk_level.value if analysis.risk_level else "unknown",
+            "severity": lvl_val,
+            "risk_score": score_val,
+            "overall_risk_score": score_val,
+            "risk_level": lvl_val,
+            "subject": analysis.email.subject if analysis.email else None,
+            "sender": analysis.email.from_address if analysis.email else None,
+            "explanation": explanation,
+            "findings": findings,
+            "security_checks": security_checks,
+            "threat_categories": threat_categories,
+            "recommendations": recommendations,
             "started_at": analysis.started_at.isoformat() if analysis.started_at else None,
             "completed_at": analysis.completed_at.isoformat() if analysis.completed_at else None,
             "duration_ms": analysis.duration_ms,

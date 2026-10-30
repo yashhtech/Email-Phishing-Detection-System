@@ -1,15 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { useAnalysisNotificationStore } from '../notifications'
 
 interface DashboardWsEvent {
   analysis_id?: string
   status?: string
   stage?: string
+  error_message?: string
   data?: {
+    analysis_id?: string
     risk_score?: number
     verdict?: string
     severity?: string
     classification?: string
+    subject?: string | null
+    sender?: string | null
+    explanation?: string | null
+    findings?: string[]
+    security_checks?: Record<string, unknown>
+    threat_categories?: string[]
+    recommendations?: string[]
+    completed_at?: string | null
+    [key: string]: unknown
   }
   timestamp?: string
 }
@@ -80,6 +92,31 @@ export function useDashboardWebSocket(onNewEvent?: (event: DashboardWsEvent) => 
               if (onNewEventRef.current) {
                 onNewEventRef.current(payload)
               }
+
+              // Trigger instant notification popup if data payload is present
+              if (payload.data && (payload.data.analysis_id || payload.analysis_id)) {
+                const d = payload.data
+                useAnalysisNotificationStore.getState().notifyAnalysis({
+                  analysis_id: String(d.analysis_id || payload.analysis_id),
+                  verdict: String(d.verdict || 'clean'),
+                  severity: d.severity ? String(d.severity) : undefined,
+                  risk_score: typeof d.risk_score === 'number' ? d.risk_score : 0,
+                  subject: d.subject ? String(d.subject) : null,
+                  sender: d.sender ? String(d.sender) : null,
+                  explanation: d.explanation ? String(d.explanation) : null,
+                  findings: Array.isArray(d.findings) ? d.findings : [],
+                  security_checks: typeof d.security_checks === 'object' && d.security_checks !== null ? d.security_checks as Record<string, unknown> : undefined,
+                  threat_categories: Array.isArray(d.threat_categories) ? d.threat_categories : [],
+                  recommendations: Array.isArray(d.recommendations) ? d.recommendations : [],
+                  completed_at: d.completed_at ? String(d.completed_at) : null,
+                })
+              }
+            } else if (payload.status === 'failed') {
+              useAnalysisNotificationStore.getState().notifyError({
+                title: 'Analysis Failed',
+                message: payload.error_message || 'Background analysis encountered an error.',
+                analysis_id: payload.analysis_id,
+              })
             }
           } catch {
             // Ignore non-json or ping frames

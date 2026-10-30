@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import type { EmailAnalysisResult } from '../../entities/emailAnalysis'
 import { emailsApi } from '../../shared/api/emails.api'
+import { useAnalysisNotificationStore } from '../notifications'
 
 export type InputMode = 'structured' | 'raw' | 'upload'
 export type AnalysisStatus = 'idle' | 'validating' | 'uploading' | 'analyzing' | 'completed' | 'failed'
@@ -287,10 +288,28 @@ export function useEmailAnalyzer() {
         const data = await emailsApi.analyzeStructured(payload)
         setResult(data)
         setStatus('completed')
+        useAnalysisNotificationStore.getState().notifyAnalysis({
+          analysis_id: data.analysis_id,
+          verdict: data.verdict,
+          severity: data.severity || data.initial_risk_level,
+          risk_score: data.risk_score ?? data.initial_risk_score ?? 0,
+          subject: data.subject,
+          sender: data.from_address,
+          explanation: data.explanation,
+          findings: data.findings || data.threat_signals || [],
+          security_checks: data.security_checks,
+          threat_categories: data.threat_categories,
+          recommendations: data.recommendations,
+          completed_at: data.completed_at ? String(data.completed_at) : null,
+        })
       } catch (err: unknown) {
         setStatus('failed')
         const message = err instanceof Error ? err.message : 'Analysis failed. Please check backend status.'
         setError(message)
+        useAnalysisNotificationStore.getState().notifyError({
+          title: 'Analysis Failed',
+          message,
+        })
       }
     } else if (mode === 'raw') {
       if (!validateRaw()) {
@@ -302,10 +321,28 @@ export function useEmailAnalyzer() {
         const data = await emailsApi.analyzeRaw(rawEmail)
         setResult(data)
         setStatus('completed')
+        useAnalysisNotificationStore.getState().notifyAnalysis({
+          analysis_id: data.analysis_id,
+          verdict: data.verdict,
+          severity: data.severity || data.initial_risk_level,
+          risk_score: data.risk_score ?? data.initial_risk_score ?? 0,
+          subject: data.subject,
+          sender: data.from_address,
+          explanation: data.explanation,
+          findings: data.findings || data.threat_signals || [],
+          security_checks: data.security_checks,
+          threat_categories: data.threat_categories,
+          recommendations: data.recommendations,
+          completed_at: data.completed_at ? String(data.completed_at) : null,
+        })
       } catch (err: unknown) {
         setStatus('failed')
         const message = err instanceof Error ? err.message : 'Analysis failed. Please check backend status.'
         setError(message)
+        useAnalysisNotificationStore.getState().notifyError({
+          title: 'Analysis Failed',
+          message,
+        })
       }
     } else if (mode === 'upload') {
       if (!validateUpload()) {
@@ -322,10 +359,28 @@ export function useEmailAnalyzer() {
         setUploadProgress(100)
         setResult(data)
         setStatus('completed')
+        useAnalysisNotificationStore.getState().notifyAnalysis({
+          analysis_id: data.analysis_id,
+          verdict: data.verdict,
+          severity: data.severity || data.initial_risk_level,
+          risk_score: data.risk_score ?? data.initial_risk_score ?? 0,
+          subject: data.subject,
+          sender: data.from_address,
+          explanation: data.explanation,
+          findings: data.findings || data.threat_signals || [],
+          security_checks: data.security_checks,
+          threat_categories: data.threat_categories,
+          recommendations: data.recommendations,
+          completed_at: data.completed_at ? String(data.completed_at) : null,
+        })
       } catch (err: unknown) {
         setStatus('failed')
         const message = err instanceof Error ? err.message : 'Upload failed. Please check backend status.'
         setError(message)
+        useAnalysisNotificationStore.getState().notifyError({
+          title: 'Upload Failed',
+          message,
+        })
       }
     }
   }, [mode, structuredData, rawEmail, emlFile, uploadAttachments, validateStructuredForm, validateRaw, validateUpload])

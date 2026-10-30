@@ -94,6 +94,8 @@ class EmailAnalysisSubmitResponse(BaseModel):
     analysis_id: str
     status: str
     verdict: str
+    severity: str | None = None
+    risk_score: float | None = None
     message_id: str
     from_address: str
     from_domain: str
@@ -111,3 +113,9 @@ class EmailAnalysisSubmitResponse(BaseModel):
     initial_risk_score: float
     initial_risk_level: str
     threat_signals: list[str]
+    explanation: str | None = None
+    findings: list[str] = Field(default_factory=list)
+    security_checks: dict[str, Any] = Field(default_factory=dict)
+    threat_categories: list[str] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
+    completed_at: datetime | None = None

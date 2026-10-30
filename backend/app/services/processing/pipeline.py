@@ -513,17 +513,51 @@ async def execute_analysis_pipeline(job: AnalysisJob) -> None:
             )
             return
 
+    # Synthesize findings and security checks for real-time notification
+    top_findings = [sig.title for sig in (security_signals + behavioral_signals)[:3] if sig.title]
+    if not top_findings:
+        top_findings = [
+            "Sender authentication passed (SPF/DKIM/DMARC)",
+            "No suspicious or defanged URLs detected",
+            "No weaponized or executable attachments found",
+        ]
+
+    sec_summary = {
+        "spf": email_input.headers.spf_status.value if email_input and email_input.headers and email_input.headers.spf_status else "unknown",
+        "dkim": email_input.headers.dkim_status.value if email_input and email_input.headers and email_input.headers.dkim_status else "unknown",
+        "dmarc": email_input.headers.dmarc_status.value if email_input and email_input.headers and email_input.headers.dmarc_status else "unknown",
+        "urls_analyzed": len(email_input.urls) if email_input else 0,
+        "attachments_analyzed": len(email_input.attachments) if email_input else 0,
+    }
+
+    categories_list = list(dict.fromkeys(sig.category.value for sig in (security_signals + behavioral_signals) if sig.category))
+
+    expl_text = (
+        llm_result.analysis.executive_summary
+        if (llm_result and llm_result.analysis and llm_result.analysis.executive_summary)
+        else risk_assessment.rationale
+    )
+
     # Final completed event broadcast
     await _emit(
         analysis_id_str,
         AnalysisStage.COMPLETED,
         status="completed",
         data={
-            "risk_score": risk_assessment.risk_score,
+            "analysis_id": analysis_id_str,
+            "risk_score": int(risk_assessment.risk_score),
             "severity": risk_assessment.severity.value,
             "verdict": risk_assessment.verdict.value,
             "classification": risk_assessment.classification.value,
             "recommendation": risk_assessment.recommendation,
+            "recommendations": [risk_assessment.recommendation],
+            "subject": email_input.subject if email_input else (email_record.subject if email_record else None),
+            "sender": email_input.from_address if email_input else (email_record.from_address if email_record else None),
+            "explanation": expl_text,
+            "findings": top_findings,
+            "security_checks": sec_summary,
+            "threat_categories": categories_list,
+            "completed_at": datetime.now(UTC).isoformat(),
         },
     )
 

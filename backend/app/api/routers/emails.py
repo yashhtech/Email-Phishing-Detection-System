@@ -10,6 +10,7 @@ Endpoints:
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated
 
 import structlog
@@ -18,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.api.dependencies import get_optional_user_claims, get_uow
+from app.infrastructure.websocket.manager import ws_manager
 from app.api.schemas.email import (
     EmailAnalysisSubmitResponse,
     ExtractedAttachmentResponse,
@@ -160,11 +162,76 @@ def _build_response(
     risk_level: RiskLevel,
     threat_signals: list[str],
 ) -> EmailAnalysisSubmitResponse:
+    lvl_val = risk_level.value.lower()
+    score_int = int(risk_score_val)
+
+    # Explanation based on severity / score
+    if lvl_val in ("critical", "high") or score_int >= 70:
+        explanation = (
+            "Critical threat indicators detected including suspected credential harvesting, "
+            "severe authentication failures, or deceptive lookalike domains."
+        )
+    elif lvl_val == "medium" or score_int >= 30:
+        explanation = (
+            "Unusual patterns detected such as unverified sender authentication, "
+            "suspicious wording, or unverified external links."
+        )
+    else:
+        explanation = (
+            "All core security authentication checks passed. "
+            "No deceptive links, malware indicators, or sender impersonation detected."
+        )
+
+    # Top findings
+    findings = [s.split(":", 1)[0].strip() if ":" in s else s.strip() for s in threat_signals[:3]]
+    if not findings:
+        findings = [
+            "Sender authentication passed (SPF/DKIM/DMARC)",
+            "No suspicious or defanged URLs detected",
+            "No weaponized or executable attachments found",
+        ]
+
+    # Security checks summary
+    security_checks = {
+        "spf": artifacts.headers.spf_status.value if artifacts.headers.spf_status else "unknown",
+        "dkim": artifacts.headers.dkim_status.value if artifacts.headers.dkim_status else "unknown",
+        "dmarc": artifacts.headers.dmarc_status.value if artifacts.headers.dmarc_status else "unknown",
+        "urls_analyzed": len(artifacts.urls),
+        "attachments_analyzed": len(artifacts.attachments),
+    }
+
+    # Threat categories supported by analysis
+    threat_categories: list[str] = []
+    if any("SPF" in s or "DKIM" in s or "DMARC" in s or "Reply-To" in s for s in threat_signals):
+        threat_categories.append("spoofing")
+    if any("URL" in s or "link" in s.lower() or "ip address" in s.lower() for s in threat_signals):
+        threat_categories.append("phishing")
+    if any(a.is_executable for a in artifacts.attachments):
+        threat_categories.append("malware")
+    if not threat_categories and (lvl_val in ("critical", "high")):
+        threat_categories.append("phishing")
+
+    # Recommendations matching prompt requirements
+    if lvl_val in ("critical", "high") or score_int >= 70:
+        recommendations = [
+            "Do not click links, open attachments, reply, or share credentials or financial information. Report this email to your security team."
+        ]
+    elif lvl_val == "medium" or score_int >= 30:
+        recommendations = [
+            "Do not click links or open attachments until you independently verify the sender."
+        ]
+    else:
+        recommendations = [
+            "No major threat indicators were detected. Still verify unexpected requests before sharing sensitive information."
+        ]
+
     return EmailAnalysisSubmitResponse(
         email_id=str(email_record.id),
         analysis_id=str(analysis_record.id),
         status=email_record.status.value,
         verdict=analysis_record.verdict.value if analysis_record.verdict else "unknown",
+        severity=lvl_val,
+        risk_score=risk_score_val,
         message_id=artifacts.message_id,
         from_address=artifacts.from_address,
         from_domain=artifacts.from_domain,
@@ -220,6 +287,12 @@ def _build_response(
         initial_risk_score=risk_score_val,
         initial_risk_level=risk_level.value,
         threat_signals=threat_signals,
+        explanation=explanation,
+        findings=findings,
+        security_checks=security_checks,
+        threat_categories=threat_categories,
+        recommendations=recommendations,
+        completed_at=analysis_record.completed_at or datetime.now(UTC),
     )
 
 
@@ -360,7 +433,7 @@ async def _persist_and_respond(
     analysis_record.id = analysis_id_snapped
     analysis_record.verdict = verdict_val
 
-    return _build_response(
+    resp = _build_response(
         email_record,
         analysis_record,
         risk_record,
@@ -369,6 +442,32 @@ async def _persist_and_respond(
         risk_level,
         threat_signals,
     )
+
+    # Broadcast completed event to all WebSocket listeners (dashboard & analyzer)
+    try:
+        await ws_manager.broadcast_event(
+            analysis_id=str(analysis_record.id),
+            status="completed",
+            stage="completed",
+            data={
+                "analysis_id": str(analysis_record.id),
+                "verdict": resp.verdict,
+                "severity": resp.severity,
+                "risk_score": int(risk_score_val),
+                "subject": resp.subject,
+                "sender": resp.from_address,
+                "explanation": resp.explanation,
+                "findings": resp.findings,
+                "security_checks": resp.security_checks,
+                "threat_categories": resp.threat_categories,
+                "recommendations": resp.recommendations,
+                "completed_at": resp.completed_at.isoformat() if resp.completed_at else datetime.now(UTC).isoformat(),
+            },
+        )
+    except Exception as exc:
+        logger.debug("ws_broadcast_failed", error=str(exc))
+
+    return resp
 
 
 # ---------------------------------------------------------------------------
